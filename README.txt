@@ -1,5 +1,5 @@
 NATUGESTÃO — NATUSHOP
-Versão 1.0 — PWA gratuita e mobile-first
+Versão 1.1 — PWA gratuita, mobile-first e com autenticação
 
 O QUE JÁ FAZ
 - Cadastro e edição de produtos
@@ -29,3 +29,14 @@ A PWA não precisa ser publicada na Play Store para ser instalada na tela inicia
 
 PRÓXIMO PASSO RECOMENDADO
 Depois que a Sra. Rita validar o uso real, migrar o armazenamento para banco de dados gratuito em nuvem para ter sincronização/recuperação sem depender apenas do aparelho.
+
+
+AUTENTICAÇÃO
+- Acesso por usuário e senha validado pelo Supabase Auth.
+- Usuário visível no aplicativo: natushop.
+- A senha não fica salva no código do GitHub.
+- A sessão é renovada com token de autenticação.
+- Botão Sair encerra a sessão.
+
+OBSERVAÇÃO DE SEGURANÇA
+Nesta versão, os dados operacionais ainda ficam no localStorage do smartphone. O login protege o acesso normal à interface, mas a proteção completa dos dados exige a próxima etapa: migrar estoque, vendas e despesas para o banco Supabase com Row Level Security (RLS).

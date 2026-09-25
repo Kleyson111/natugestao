@@ -3,6 +3,11 @@
 
   const STORAGE_KEY = 'natugestao-v1';
   const VERSION = 1;
+  const SUPABASE_URL = 'https://uspgsnexykcgsaofriig.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_TNmpZs3weKA_2K7a9DrXhQ_tAoKkSX-';
+  const AUTH_USERNAME = 'natushop';
+  const AUTH_EMAIL = '23014490@uniniltonlins.edu.br';
+  const AUTH_STORAGE_KEY = 'natugestao-auth-v1';
   const now = new Date();
   const todayISO = () => {
     const d = new Date();
@@ -23,6 +28,7 @@
 
   let state = loadState();
   let deferredInstallPrompt = null;
+  let appInitialized = false;
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -30,6 +36,133 @@
   const qty = (value) => `${Number(value || 0).toLocaleString('pt-BR')} un.`;
   const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const newId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+
+  function loadAuthSession() {
+    try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null'); }
+    catch { return null; }
+  }
+  function saveAuthSession(data) {
+    const expiresIn = Math.max(60, Number(data.expires_in || 3600));
+    const current = loadAuthSession() || {};
+    const session = {
+      accessToken: data.access_token || current.accessToken || '',
+      refreshToken: data.refresh_token || current.refreshToken || '',
+      expiresAt: Date.now() + expiresIn * 1000,
+      userId: data.user?.id || current.userId || '',
+      email: data.user?.email || current.email || AUTH_EMAIL
+    };
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    return session;
+  }
+  function clearAuthSession() { localStorage.removeItem(AUTH_STORAGE_KEY); }
+  function authHeaders(token='') {
+    const headers = { 'apikey': SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+  async function refreshAuthSession(refreshToken) {
+    if (!refreshToken) return null;
+    try {
+      const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      if (!response.ok) return null;
+      return saveAuthSession(await response.json());
+    } catch { return null; }
+  }
+  async function verifyAuthSession() {
+    let session = loadAuthSession();
+    if (!session) return false;
+    if (!session.accessToken || Number(session.expiresAt || 0) < Date.now() + 60000) {
+      session = await refreshAuthSession(session.refreshToken);
+      if (!session) { clearAuthSession(); return false; }
+    }
+    try {
+      let response = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: authHeaders(session.accessToken) });
+      if (response.ok) return true;
+      session = await refreshAuthSession(session.refreshToken);
+      if (!session) { clearAuthSession(); return false; }
+      response = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: authHeaders(session.accessToken) });
+      if (response.ok) return true;
+    } catch {
+      // Sem internet: só libera se a sessão local ainda estiver dentro da validade.
+      if (session.accessToken && Number(session.expiresAt || 0) > Date.now()) return true;
+    }
+    clearAuthSession();
+    return false;
+  }
+  async function signIn(username, password) {
+    if (String(username || '').trim().toLowerCase() !== AUTH_USERNAME) {
+      throw new Error('Usuário ou senha incorretos.');
+    }
+    if (!password) throw new Error('Informe a senha.');
+    let response;
+    try {
+      response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ email: AUTH_EMAIL, password })
+      });
+    } catch {
+      throw new Error('Sem conexão com a internet. Tente novamente.');
+    }
+    if (!response.ok) {
+      let detail = {};
+      try { detail = await response.json(); } catch {}
+      if (response.status === 400 || response.status === 401) throw new Error('Usuário ou senha incorretos.');
+      throw new Error(detail?.msg || detail?.message || 'Não foi possível entrar. Tente novamente.');
+    }
+    saveAuthSession(await response.json());
+    return true;
+  }
+  async function signOut() {
+    const session = loadAuthSession();
+    clearAuthSession();
+    if (session?.accessToken) {
+      try { await fetch(`${SUPABASE_URL}/auth/v1/logout`, { method:'POST', headers: authHeaders(session.accessToken) }); } catch {}
+    }
+    showLogin();
+  }
+  function showLogin(message='') {
+    document.body.classList.remove('auth-ready');
+    document.body.classList.add('auth-locked');
+    const msg = $('#loginMsg');
+    if (msg) msg.textContent = message;
+    const pwd = $('#loginPassword');
+    if (pwd) pwd.value = '';
+    setTimeout(() => $('#loginUsername')?.focus(), 50);
+  }
+  function showApp() {
+    document.body.classList.remove('auth-locked');
+    document.body.classList.add('auth-ready');
+    initializeAppOnce();
+  }
+  function setupAuthEvents() {
+    const form = $('#loginForm');
+    const button = $('#loginBtn');
+    const msg = $('#loginMsg');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      msg.textContent = '';
+      button.disabled = true;
+      button.textContent = 'Entrando...';
+      try {
+        await signIn($('#loginUsername').value, $('#loginPassword').value);
+        showApp();
+      } catch (err) {
+        msg.textContent = err?.message || 'Não foi possível entrar.';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Entrar';
+      }
+    });
+    $('#togglePassword').addEventListener('click', () => {
+      const input = $('#loginPassword');
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      $('#togglePassword').textContent = showing ? 'Mostrar' : 'Ocultar';
+      $('#togglePassword').setAttribute('aria-label', showing ? 'Mostrar senha' : 'Ocultar senha');
+    });
+    $('#logoutBtn').addEventListener('click', signOut);
+  }
 
   function loadState() {
     try {
@@ -443,12 +576,21 @@
     });
   }
 
-  function init() {
+  function initializeAppOnce() {
+    if (appInitialized) return;
+    appInitialized = true;
     $('#homeMonth').value = monthISO();
     $('#reportMonth').value = monthISO();
     ['#entryDate','#saleDate','#expenseDate'].forEach(s => $(s).value = todayISO());
-    setupForms(); setupEvents(); setupPwa(); renderAll(); updateSalePreview();
+    setupForms(); setupEvents(); renderAll(); updateSalePreview();
+  }
+  async function bootstrap() {
+    setupAuthEvents();
+    setupPwa();
+    const authenticated = await verifyAuthSession();
+    if (authenticated) showApp();
+    else showLogin();
   }
 
-  init();
+  bootstrap();
 })();

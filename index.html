@@ -4,14 +4,46 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1f8a5b" />
-  <meta name="description" content="NatuGestão — controle gratuito de estoque, custos, vendas, despesas e faturamento da Natushop." />
+  <meta name="description" content="NatuGestão — Gestão Financeira e Controle de Estoque da Natushop." />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
   <title>NatuGestão</title>
 </head>
-<body>
+<body class="auth-locked">
+  <section id="authScreen" class="auth-screen" aria-labelledby="authTitle">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img src="icons/icon-192.png" alt="Logo NatuGestão" class="auth-logo" />
+        <div>
+          <div class="auth-kicker">NATUSHOP PRODUTOS NATURAIS</div>
+          <h1 id="authTitle">NatuGestão</h1>
+          <p>Gestão Financeira e Controle de Estoque</p>
+        </div>
+      </div>
+      <div class="auth-divider"></div>
+      <div class="auth-copy">
+        <strong>Acesso restrito</strong>
+        <span>Entre com o usuário e a senha autorizados.</span>
+      </div>
+      <form id="loginForm" class="auth-form" autocomplete="on">
+        <label>Usuário
+          <input id="loginUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="natushop" required />
+        </label>
+        <label>Senha
+          <div class="password-field">
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Digite sua senha" required />
+            <button id="togglePassword" class="password-toggle" type="button" aria-label="Mostrar senha">Mostrar</button>
+          </div>
+        </label>
+        <button id="loginBtn" class="auth-submit" type="submit">Entrar</button>
+        <p id="loginMsg" class="auth-feedback" aria-live="polite"></p>
+      </form>
+      <div class="auth-security">🔒 Autenticação segura</div>
+      <div class="auth-support"><strong>Desenvolvido por Kleyson Peres</strong><span>Suporte (92) 993687703</span></div>
+    </div>
+  </section>
   <header class="topbar">
     <div class="brand-wrap">
       <div class="brand-logo" aria-hidden="true">
@@ -42,10 +74,13 @@
       <div class="brand-copy">
         <div class="brand-kicker">NATUSHOP PRODUTOS NATURAIS</div>
         <h1>NatuGestão</h1>
-        <p>Controle de estoque, custos, vendas e despesas com identidade amazônica.</p>
+        <p>Gestão Financeira e Controle de Estoque</p>
       </div>
     </div>
-    <button id="installBtn" class="btn ghost hidden install-btn" type="button">Instalar</button>
+    <div class="top-actions">
+      <button id="installBtn" class="btn ghost hidden install-btn" type="button">Instalar</button>
+      <button id="logoutBtn" class="btn logout-btn" type="button">Sair</button>
+    </div>
   </header>
 
   <main class="app-shell">
@@ -220,8 +255,8 @@
     <div class="footer-card">
       <div class="footer-mark">🌿</div>
       <div>
-        <strong>Criado por Kleyson Peres</strong>
-        <span>92993687703 (Suporte)</span>
+        <strong>Desenvolvido por Kleyson Peres</strong>
+        <span>Suporte (92) 993687703</span>
       </div>
     </div>
   </footer>
