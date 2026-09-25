@@ -1,0 +1,15 @@
+{
+  "name": "NatuGestão — Natushop",
+  "short_name": "NatuGestão",
+  "description": "Controle de estoque, custos, vendas, despesas e faturamento da Natushop.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5fbf6",
+  "theme_color": "#1f8a5b",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

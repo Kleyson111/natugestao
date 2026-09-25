@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f8a5b" />
+  <meta name="description" content="NatuGestão — controle gratuito de estoque, custos, vendas, despesas e faturamento da Natushop." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>NatuGestão</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-logo" aria-hidden="true">
+        <svg viewBox="0 0 120 120" role="img" aria-label="Logo amazônica do NatuGestão">
+          <defs>
+            <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#1f8a5b"/>
+              <stop offset="58%" stop-color="#2f9e44"/>
+              <stop offset="100%" stop-color="#f59e0b"/>
+            </linearGradient>
+            <linearGradient id="sunGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffe082"/>
+              <stop offset="100%" stop-color="#f59e0b"/>
+            </linearGradient>
+          </defs>
+          <circle cx="60" cy="60" r="56" fill="url(#logoBg)"/>
+          <circle cx="80" cy="34" r="14" fill="url(#sunGrad)" opacity=".96"/>
+          <path d="M18 73c9-12 20-19 34-19 18 0 29 8 50 24-16 8-28 12-42 12-18 0-29-6-42-17Z" fill="#fff5d8" opacity=".96"/>
+          <path d="M17 74c16 9 28 13 42 13 14 0 26-4 44-13-15 18-28 25-43 25-17 0-30-8-43-25Z" fill="#f59e0b" opacity=".88"/>
+          <path d="M26 62c6-18 18-30 35-35-7 18-18 30-35 35Z" fill="#c5f6b5" opacity=".95"/>
+          <path d="M54 22c18 5 30 15 37 31-17-4-29-15-37-31Z" fill="#d9f99d" opacity=".96"/>
+          <path d="M60 26c-3 14-12 24-26 31 4-16 13-27 26-31Z" fill="#14532d" opacity=".7"/>
+          <path d="M58 25c12 5 21 13 27 25-13-3-22-11-27-25Z" fill="#166534" opacity=".65"/>
+          <text x="60" y="73" text-anchor="middle" font-size="17" font-family="Trebuchet MS, Segoe UI, sans-serif" font-weight="700" fill="#ffffff">Natu</text>
+          <text x="60" y="87" text-anchor="middle" font-size="9" font-family="Trebuchet MS, Segoe UI, sans-serif" font-weight="700" letter-spacing="1.2" fill="#fff7e8">GESTÃO</text>
+        </svg>
+      </div>
+      <div class="brand-copy">
+        <div class="brand-kicker">NATUSHOP PRODUTOS NATURAIS</div>
+        <h1>NatuGestão</h1>
+        <p>Controle de estoque, custos, vendas e despesas com identidade amazônica.</p>
+      </div>
+    </div>
+    <button id="installBtn" class="btn ghost hidden install-btn" type="button">Instalar</button>
+  </header>
+
+  <main class="app-shell">
+    <section id="view-home" class="view active" aria-labelledby="tab-home">
+      <div class="section-head">
+        <div>
+          <h2>Visão do mês</h2>
+          <p id="monthLabel" class="muted"></p>
+        </div>
+        <input id="homeMonth" class="month-input" type="month" aria-label="Mês do painel" />
+      </div>
+
+      <div class="cards-grid">
+        <article class="metric-card"><span>Faturamento</span><strong id="mRevenue">R$ 0,00</strong><small>vendas do mês</small></article>
+        <article class="metric-card"><span>CMV</span><strong id="mCogs">R$ 0,00</strong><small>custo das mercadorias vendidas</small></article>
+        <article class="metric-card"><span>Lucro bruto</span><strong id="mGross">R$ 0,00</strong><small>faturamento − CMV</small></article>
+        <article class="metric-card"><span>Despesas</span><strong id="mExpenses">R$ 0,00</strong><small>gastos registrados</small></article>
+        <article class="metric-card accent"><span>Resultado</span><strong id="mResult">R$ 0,00</strong><small>lucro bruto − despesas</small></article>
+        <article class="metric-card"><span>Estoque</span><strong id="mStockQty">0 un.</strong><small id="mStockValue">R$ 0,00 em custo</small></article>
+      </div>
+
+      <section class="panel">
+        <div class="panel-title-row"><h3>Ações rápidas</h3></div>
+        <div class="quick-grid">
+          <button class="quick" type="button" data-open="products">+ Produto</button>
+          <button class="quick" type="button" data-open="entries">+ Entrada</button>
+          <button class="quick primary" type="button" data-open="sales">+ Venda</button>
+          <button class="quick" type="button" data-open="expenses">+ Despesa</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title-row">
+          <h3>Estoque baixo</h3>
+          <span id="lowStockBadge" class="badge">0</span>
+        </div>
+        <div id="lowStockList" class="list empty">Nenhum alerta de estoque.</div>
+      </section>
+    </section>
+
+    <section id="view-products" class="view" aria-labelledby="tab-products">
+      <div class="section-head"><div><h2>Produtos e estoque</h2><p class="muted">Cadastre os itens vendidos pela Natushop.</p></div></div>
+
+      <details class="panel" open>
+        <summary>Novo produto</summary>
+        <form id="productForm" class="form-grid">
+          <input type="hidden" id="productId" />
+          <label>Produto<input id="productName" maxlength="80" required placeholder="Ex.: Óleo de copaíba" /></label>
+          <label>Categoria<input id="productCategory" maxlength="60" placeholder="Ex.: Óleos naturais" /></label>
+          <label>Custo unitário (R$)<input id="productCost" type="number" min="0" step="0.01" inputmode="decimal" required /></label>
+          <label>Preço de venda (R$)<input id="productPrice" type="number" min="0" step="0.01" inputmode="decimal" required /></label>
+          <label>Quantidade inicial<input id="productQty" type="number" min="0" step="1" inputmode="numeric" required value="0" /></label>
+          <label>Estoque mínimo<input id="productMin" type="number" min="0" step="1" inputmode="numeric" required value="3" /></label>
+          <label class="full">Observação<input id="productNote" maxlength="120" placeholder="Opcional" /></label>
+          <div class="form-actions full"><button class="btn primary" type="submit">Salvar produto</button><button id="cancelProductEdit" class="btn ghost hidden" type="button">Cancelar edição</button></div>
+          <p id="productMsg" class="feedback full" aria-live="polite"></p>
+        </form>
+      </details>
+
+      <section class="panel">
+        <div class="panel-title-row"><h3>Estoque atual</h3><span id="productCount" class="badge">0 produtos</span></div>
+        <div class="search-row"><input id="productSearch" type="search" placeholder="Buscar produto..." /></div>
+        <div id="productList" class="list"></div>
+      </section>
+    </section>
+
+    <section id="view-entries" class="view" aria-labelledby="tab-entries">
+      <div class="section-head"><div><h2>Entradas de mercadoria</h2><p class="muted">Aumenta o estoque e atualiza o custo médio.</p></div></div>
+      <section class="panel">
+        <form id="entryForm" class="form-grid">
+          <label>Data<input id="entryDate" type="date" required /></label>
+          <label>Produto<select id="entryProduct" required></select></label>
+          <label>Quantidade<input id="entryQty" type="number" min="1" step="1" inputmode="numeric" required value="1" /></label>
+          <label>Custo unitário da compra (R$)<input id="entryUnitCost" type="number" min="0" step="0.01" inputmode="decimal" required /></label>
+          <label>Fornecedor<input id="entrySupplier" maxlength="80" placeholder="Opcional" /></label>
+          <label>Documento/observação<input id="entryNote" maxlength="100" placeholder="Opcional" /></label>
+          <div class="form-actions full"><button class="btn primary" type="submit">Registrar entrada</button></div>
+          <p id="entryMsg" class="feedback full" aria-live="polite"></p>
+        </form>
+      </section>
+      <section class="panel"><div class="panel-title-row"><h3>Últimas entradas</h3></div><div id="entryList" class="list"></div></section>
+    </section>
+
+    <section id="view-sales" class="view" aria-labelledby="tab-sales">
+      <div class="section-head"><div><h2>Vendas</h2><p class="muted">A baixa de estoque e o CMV são calculados automaticamente.</p></div></div>
+      <section class="panel">
+        <form id="saleForm" class="form-grid">
+          <label>Data<input id="saleDate" type="date" required /></label>
+          <label>Produto<select id="saleProduct" required></select></label>
+          <label>Quantidade<input id="saleQty" type="number" min="1" step="1" inputmode="numeric" required value="1" /></label>
+          <label>Valor unitário vendido (R$)<input id="saleUnitPrice" type="number" min="0" step="0.01" inputmode="decimal" required /></label>
+          <label>Forma de pagamento<select id="salePayment"><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Outro</option></select></label>
+          <label>Cliente/observação<input id="saleNote" maxlength="100" placeholder="Opcional" /></label>
+          <div id="salePreview" class="calc-preview full">Total da venda: <strong>R$ 0,00</strong></div>
+          <div class="form-actions full"><button class="btn primary" type="submit">Finalizar venda</button></div>
+          <p id="saleMsg" class="feedback full" aria-live="polite"></p>
+        </form>
+      </section>
+      <section class="panel"><div class="panel-title-row"><h3>Últimas vendas</h3></div><div id="saleList" class="list"></div></section>
+    </section>
+
+    <section id="view-expenses" class="view" aria-labelledby="tab-expenses">
+      <div class="section-head"><div><h2>Despesas</h2><p class="muted">Aluguel e Energia já estão cadastrados. Outras categorias podem ser incluídas.</p></div></div>
+      <section class="panel">
+        <form id="expenseForm" class="form-grid">
+          <label>Data<input id="expenseDate" type="date" required /></label>
+          <label>Categoria<select id="expenseCategory" required></select></label>
+          <label>Descrição<input id="expenseDescription" maxlength="100" placeholder="Ex.: Aluguel de setembro" /></label>
+          <label>Valor (R$)<input id="expenseValue" type="number" min="0.01" step="0.01" inputmode="decimal" required /></label>
+          <label>Forma de pagamento<select id="expensePayment"><option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Boleto</option><option>Outro</option></select></label>
+          <div class="form-actions full"><button class="btn primary" type="submit">Salvar despesa</button></div>
+          <p id="expenseMsg" class="feedback full" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title-row"><h3>Categorias de despesa</h3></div>
+        <form id="categoryForm" class="inline-form"><input id="newCategory" maxlength="50" required placeholder="Ex.: Internet" /><button class="btn ghost" type="submit">Adicionar</button></form>
+        <div id="categoryChips" class="chips"></div>
+        <p id="categoryMsg" class="feedback" aria-live="polite"></p>
+      </section>
+
+      <section class="panel"><div class="panel-title-row"><h3>Últimas despesas</h3><strong id="expenseTotalShown">R$ 0,00</strong></div><div id="expenseList" class="list"></div></section>
+    </section>
+
+    <section id="view-reports" class="view" aria-labelledby="tab-reports">
+      <div class="section-head">
+        <div><h2>Relatórios</h2><p class="muted">Acompanhe o resultado por período.</p></div>
+        <input id="reportMonth" class="month-input" type="month" aria-label="Mês do relatório" />
+      </div>
+      <div class="cards-grid reports">
+        <article class="metric-card"><span>Faturamento</span><strong id="rRevenue">R$ 0,00</strong></article>
+        <article class="metric-card"><span>(−) CMV</span><strong id="rCogs">R$ 0,00</strong></article>
+        <article class="metric-card"><span>Lucro bruto</span><strong id="rGross">R$ 0,00</strong></article>
+        <article class="metric-card"><span>(−) Despesas</span><strong id="rExpenses">R$ 0,00</strong></article>
+        <article class="metric-card accent"><span>Resultado</span><strong id="rResult">R$ 0,00</strong></article>
+        <article class="metric-card"><span>Margem</span><strong id="rMargin">0,0%</strong></article>
+      </div>
+      <section class="panel"><h3>Despesas por categoria</h3><div id="expenseByCategory" class="list"></div></section>
+      <section class="panel"><h3>Produtos mais vendidos</h3><div id="topProducts" class="list"></div></section>
+      <section class="panel"><h3>Estoque atual</h3><div class="summary-row"><span>Quantidade</span><strong id="rStockQty">0 un.</strong></div><div class="summary-row"><span>Valor pelo custo médio</span><strong id="rStockValue">R$ 0,00</strong></div></section>
+    </section>
+
+    <section id="view-backup" class="view" aria-labelledby="tab-backup">
+      <div class="section-head"><div><h2>Backup e segurança</h2><p class="muted">Nesta primeira versão, os dados ficam salvos no próprio smartphone.</p></div></div>
+      <section class="panel warning-panel">
+        <h3>Importante</h3>
+        <p>Se os dados do navegador forem apagados ou o celular for perdido, o histórico pode ser perdido. Faça um backup regularmente.</p>
+      </section>
+      <section class="panel">
+        <h3>Backup completo</h3>
+        <p class="muted">Gera um arquivo com produtos, estoque, entradas, vendas, despesas e categorias.</p>
+        <div class="stack-actions">
+          <button id="exportBackup" class="btn primary" type="button">Baixar backup</button>
+          <label class="file-btn btn ghost">Restaurar backup<input id="importBackup" type="file" accept="application/json,.json" /></label>
+        </div>
+        <p id="backupMsg" class="feedback" aria-live="polite"></p>
+      </section>
+      <section class="panel">
+        <h3>Exportar relatórios</h3>
+        <p class="muted">Arquivos CSV podem ser abertos posteriormente em Excel, Google Sheets ou outro aplicativo.</p>
+        <div class="stack-actions">
+          <button id="exportSalesCsv" class="btn ghost" type="button">Vendas em CSV</button>
+          <button id="exportExpensesCsv" class="btn ghost" type="button">Despesas em CSV</button>
+          <button id="exportProductsCsv" class="btn ghost" type="button">Estoque em CSV</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+    <footer class="app-footer">
+    <div class="footer-card">
+      <div class="footer-mark">🌿</div>
+      <div>
+        <strong>Criado por Kleyson Peres</strong>
+        <span>92993687703 (Suporte)</span>
+      </div>
+    </div>
+  </footer>
+
+<nav class="bottom-nav" aria-label="Menu principal">
+    <button id="tab-home" class="nav-item active" data-view="home" type="button"><span>⌂</span><small>Início</small></button>
+    <button id="tab-products" class="nav-item" data-view="products" type="button"><span>▦</span><small>Estoque</small></button>
+    <button id="tab-sales" class="nav-item" data-view="sales" type="button"><span>R$</span><small>Vendas</small></button>
+    <button id="tab-expenses" class="nav-item" data-view="expenses" type="button"><span>−</span><small>Despesas</small></button>
+    <button id="tab-reports" class="nav-item" data-view="reports" type="button"><span>▥</span><small>Relatórios</small></button>
+    <button id="tab-backup" class="nav-item" data-view="backup" type="button"><span>⇩</span><small>Backup</small></button>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js" defer></script>
+</body>
+</html>
