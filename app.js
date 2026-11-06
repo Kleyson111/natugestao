@@ -26,7 +26,18 @@
     updatedAt: new Date().toISOString()
   });
 
-  let state = loadState();
+  // O armazenamento legado permanece intacto para recuperação em cada aparelho.
+  const legacyState = loadState();
+  let state = defaultState();
+  let cloudRevision = 0;
+  let cloudReady = false;
+  let cloudBusy = false;
+  let cloudBlocked = false;
+  let formDirty = false;
+  let memoryPending = null;
+  let cloudStore;
+  let lastCloudJSON = '';
+  const pendingKey = () => 'natugestao-pending-' + (loadAuthSession()?.userId || 'unknown');
   let deferredInstallPrompt = null;
   let appInitialized = false;
 
@@ -114,6 +125,8 @@
     return true;
   }
   async function signOut() {
+    if (cloudBusy) return toast('Aguarde a sincronização terminar.');
+    cloudReady = false;
     const session = loadAuthSession();
     clearAuthSession();
     if (session?.accessToken) {
@@ -130,10 +143,14 @@
     if (pwd) pwd.value = '';
     setTimeout(() => $('#loginUsername')?.focus(), 50);
   }
-  function showApp() {
+  async function showApp() {
+    cloudReady = false;
+    await loadCloud();
     document.body.classList.remove('auth-locked');
     document.body.classList.add('auth-ready');
     initializeAppOnce();
+    renderAll();
+    syncMessage(cloudBlocked ? "Há uma tentativa pendente. Baixe a cópia e atualize os dados antes de continuar." : "Dados carregados da nuvem.", cloudBlocked);
   }
   function setupAuthEvents() {
     const form = $('#loginForm');
@@ -146,7 +163,7 @@
       button.textContent = 'Entrando...';
       try {
         await signIn($('#loginUsername').value, $('#loginPassword').value);
-        showApp();
+        await showApp();
       } catch (err) {
         msg.textContent = err?.message || 'Não foi possível entrar.';
       } finally {
@@ -192,10 +209,117 @@
     return clean;
   }
 
-  function saveState() {
+  function syncMessage(message, error = false) {
+    const el = $('#syncStatus');
+    if (el) { el.textContent = message; el.style.color = error ? '#b91c1c' : '#14532d'; }
+  }
+  function validateBackup(data) {
+    if (!data || typeof data !== 'object' || data.version !== VERSION ||
+      !['products','entries','sales','expenses'].every(k => Array.isArray(data[k])))
+      throw new Error('Backup incompatível. Selecione um backup JSON exportado pelo NatuGestão.');
+    for (const key of ['products','entries','sales','expenses']) {
+      const ids = new Set();
+      for (const row of data[key]) {
+        if (!row || typeof row.id !== 'string' || !row.id || ids.has(row.id)) throw new Error('Backup com identificadores inválidos ou repetidos.');
+        ids.add(row.id);
+      }
+    }
+    if (data.products.some(p => typeof p.name !== 'string' || !p.name.trim() ||
+      !['qty','avgCost','salePrice','minStock'].every(k => Number.isFinite(Number(p[k])) && Number(p[k]) >= 0)))
+      throw new Error('Backup com produto inválido.');
+    const ids = new Set(data.products.map(p => p.id));
+    if ([...data.entries, ...data.sales].some(row => !ids.has(row.productId)))
+      throw new Error('Backup com movimentação sem produto correspondente.');
+    return normalizeState(data);
+  }
+  function mergeBackup(current, incoming) {
+    const merged = JSON.parse(JSON.stringify(current));
+    // Repetir o mesmo backup não duplica registros; versões divergentes exigem conferência.
+    for (const key of ['products','entries','sales','expenses']) {
+      for (const row of incoming[key]) {
+        const previous = merged[key].find(x => x.id === row.id);
+        if (previous && JSON.stringify(previous) !== JSON.stringify(row))
+          throw new Error('Este backup tem versões diferentes de registros já existentes. Nenhum dado foi importado. Guarde os dois backups para conciliação.');
+        if (!previous) {
+          if (key === 'products' && merged.products.some(p => p.name.trim().toLowerCase() === row.name.trim().toLowerCase()))
+            throw new Error('Produto com o mesmo nome em aparelhos diferentes: ' + row.name + '. É necessário conferir o estoque antes de juntar. Nenhum dado foi importado.');
+          merged[key].push(row);
+        }
+      }
+    }
+    merged.expenseCategories = [...new Set([...current.expenseCategories, ...incoming.expenseCategories])];
+    return merged;
+  }
+  async function loadCloud() {
+    if (!cloudStore) cloudStore = createNatuStore({url:SUPABASE_URL, key:SUPABASE_PUBLISHABLE_KEY,
+      getSession:loadAuthSession, refreshSession:refreshAuthSession});
+    const row = await cloudStore.load();
+    state = row ? validateBackup(row.data) : defaultState();
+    cloudRevision = row ? Number(row.revision) : 0;
+    cloudReady = true;
+    cloudBlocked = !!memoryPending || !!localStorage.getItem(pendingKey());
+    lastCloudJSON = JSON.stringify(state);
+  }
+  async function saveState() {
+    if (!cloudReady || cloudBusy || cloudBlocked) {
+      state = JSON.parse(lastCloudJSON || JSON.stringify(defaultState()));
+      syncMessage('Atualize os dados antes de continuar.', true);
+      return false;
+    }
+    cloudBusy = true;
     state.updatedAt = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    renderAll();
+    const snapshot = JSON.parse(JSON.stringify(state));
+    const pending = pendingKey();
+    syncMessage('Salvando na nuvem…');
+    let preservedOnDisk = false;
+    memoryPending = snapshot;
+    try {
+      // Antes da transmissão, preserva a tentativa localmente, inclusive se a resposta se perder.
+      localStorage.setItem(pending, JSON.stringify(snapshot));
+      preservedOnDisk = true;
+      const row = await cloudStore.save(snapshot, cloudRevision);
+      cloudRevision = Number(row.revision);
+      lastCloudJSON = JSON.stringify(snapshot);
+      state = snapshot;
+      localStorage.removeItem(pending);
+      memoryPending = null;
+      syncMessage('Salvo na nuvem. Disponível nos outros aparelhos.');
+      renderAll();
+      formDirty = false;
+      return true;
+    } catch (err) {
+      cloudBlocked = true;
+      state = JSON.parse(lastCloudJSON);
+      renderAll();
+      const recovery = preservedOnDisk ? 'A tentativa foi preservada neste aparelho.' : 'A tentativa está somente nesta tela. Baixe a cópia ANTES de fechar.';
+      syncMessage(err.message + ' ' + recovery + ' Use “Baixar tentativa pendente”.', true);
+      alert(err.message + '\nO salvamento NÃO foi confirmado. ' + recovery);
+      return false;
+    } finally { cloudBusy = false; }
+  }
+  async function updateCloud(manual = false) {
+    if (!cloudReady || cloudBusy) return;
+    if (cloudBlocked && !manual) return;
+    if (cloudBlocked && !confirm('Carregar a versão da nuvem? A tentativa pendente continuará disponível para download e conferência. Não repita uma venda sem conferir se já foi registrada.')) return;
+    if (formDirty && !manual) return;
+    if (formDirty && manual && !confirm('Há um formulário em edição. Atualizar os dados e limpar os campos não salvos?')) return;
+    cloudBusy = true;
+    try {
+      const row = await cloudStore.load();
+      state = row ? validateBackup(row.data) : defaultState();
+      cloudRevision = row ? Number(row.revision) : 0;
+      lastCloudJSON = JSON.stringify(state);
+      cloudBlocked = false;
+      if (manual) {
+        ['#productForm','#entryForm','#saleForm','#expenseForm','#categoryForm'].forEach(sel => $(sel)?.reset());
+        clearProductForm();
+        ['#entryDate','#saleDate','#expenseDate'].forEach(sel => $(sel).value = todayISO());
+        formDirty = false;
+      }
+      renderAll();
+      syncMessage('Dados atualizados da nuvem.' + (localStorage.getItem(pendingKey()) ? ' Há uma tentativa anterior disponível para download.' : ''));
+    } catch (err) { syncMessage(err.message, true); }
+    finally { cloudBusy = false; }
   }
 
   function toast(message) {
@@ -371,6 +495,7 @@
   }
 
   function editProduct(id) {
+    formDirty = true;
     const p = productById(id); if (!p) return;
     $('#productId').value = p.id;
     $('#productName').value = p.name;
@@ -385,17 +510,19 @@
     $('#productName').focus();
   }
 
-  function deactivateProduct(id) {
+  async function deactivateProduct(id) {
+    if (!cloudReady || cloudBusy || cloudBlocked) return toast('Atualize os dados antes de continuar.');
     const p = productById(id); if (!p) return;
     if (!confirm(`Desativar o produto “${p.name}”? O histórico de entradas e vendas será mantido.`)) return;
     p.active = false;
-    saveState();
+    if (!await saveState()) return;
     toast('Produto desativado.');
   }
 
   function setupForms() {
-    $('#productForm').addEventListener('submit', (ev) => {
+    $('#productForm').addEventListener('submit', async (ev) => {
       ev.preventDefault();
+      if (!cloudReady || cloudBusy || cloudBlocked) return toast('Aguarde ou clique em Atualizar dados.');
       const id = $('#productId').value;
       const name = $('#productName').value.trim();
       const category = $('#productCategory').value.trim();
@@ -415,20 +542,21 @@
         if (!hasHistory) { p.avgCost = avgCost; p.qty = enteredQty; }
         else if (Math.abs(avgCost - p.avgCost) > 0.0001 || enteredQty !== p.qty) {
           feedback($('#productMsg'),'Nome/preço foram atualizados. Estoque e custo médio não foram alterados porque já existe movimentação; use Entradas para ajustar o estoque.','ok');
-          saveState(); clearProductForm(); return;
+          if (!await saveState()) return; clearProductForm(); return;
         }
-        saveState(); clearProductForm(); toast('Produto atualizado.');
+        if (!await saveState()) return; clearProductForm(); toast('Produto atualizado.');
       } else {
         const p = { id:newId('prd'), name, category, avgCost, salePrice, qty:enteredQty, minStock, note, active:true, createdAt:new Date().toISOString() };
         state.products.push(p);
         if (enteredQty > 0) state.entries.push({ id:newId('ent'), date:todayISO(), productId:p.id, productName:p.name, qty:enteredQty, unitCost:avgCost, supplier:'Estoque inicial', note:'Cadastro inicial', createdAt:new Date().toISOString() });
-        saveState(); clearProductForm(); toast('Produto cadastrado.');
+        if (!await saveState()) return; clearProductForm(); toast('Produto cadastrado.');
       }
     });
     $('#cancelProductEdit').addEventListener('click', clearProductForm);
 
-    $('#entryForm').addEventListener('submit', (ev) => {
+    $('#entryForm').addEventListener('submit', async (ev) => {
       ev.preventDefault();
+      if (!cloudReady || cloudBusy || cloudBlocked) return toast('Aguarde ou clique em Atualizar dados.');
       const product = productById($('#entryProduct').value);
       const date = $('#entryDate').value;
       const q = intInput($('#entryQty'));
@@ -440,13 +568,14 @@
       product.avgCost = newQty ? (oldValue + q * unitCost) / newQty : unitCost;
       product.qty = newQty;
       state.entries.push({ id:newId('ent'), date, productId:product.id, productName:product.name, qty:q, unitCost, supplier:$('#entrySupplier').value.trim(), note:$('#entryNote').value.trim(), createdAt:new Date().toISOString() });
-      saveState();
+      if (!await saveState()) return;
       $('#entryForm').reset(); $('#entryDate').value=todayISO(); $('#entryQty').value='1';
       feedback($('#entryMsg'),'Entrada registrada e custo médio atualizado.','ok'); toast('Entrada registrada.');
     });
 
-    $('#saleForm').addEventListener('submit', (ev) => {
+    $('#saleForm').addEventListener('submit', async (ev) => {
       ev.preventDefault();
+      if (!cloudReady || cloudBusy || cloudBlocked) return toast('Aguarde ou clique em Atualizar dados.');
       const product = productById($('#saleProduct').value);
       const date = $('#saleDate').value;
       const q = intInput($('#saleQty'));
@@ -456,31 +585,33 @@
       const costSnapshot = Number(product.avgCost || 0);
       product.qty -= q;
       state.sales.push({ id:newId('ven'), date, productId:product.id, productName:product.name, qty:q, unitPrice, total:q*unitPrice, unitCost:costSnapshot, cogs:q*costSnapshot, payment:$('#salePayment').value, note:$('#saleNote').value.trim(), createdAt:new Date().toISOString() });
-      saveState();
+      if (!await saveState()) return;
       $('#saleForm').reset(); $('#saleDate').value=todayISO(); $('#saleQty').value='1'; updateSalePreview();
       feedback($('#saleMsg'),'Venda registrada e estoque baixado.','ok'); toast('Venda finalizada.');
     });
 
-    $('#expenseForm').addEventListener('submit', (ev) => {
+    $('#expenseForm').addEventListener('submit', async (ev) => {
       ev.preventDefault();
+      if (!cloudReady || cloudBusy || cloudBlocked) return toast('Aguarde ou clique em Atualizar dados.');
       const date = $('#expenseDate').value;
       const category = $('#expenseCategory').value;
       const value = moneyInput($('#expenseValue'));
       if (!date || !category || value <= 0) return feedback($('#expenseMsg'),'Informe data, categoria e valor da despesa.','error');
       state.expenses.push({ id:newId('des'), date, category, description:$('#expenseDescription').value.trim(), value, payment:$('#expensePayment').value, createdAt:new Date().toISOString() });
-      saveState();
+      if (!await saveState()) return;
       $('#expenseForm').reset(); $('#expenseDate').value=todayISO();
       feedback($('#expenseMsg'),'Despesa registrada.','ok'); toast('Despesa salva.');
     });
 
-    $('#categoryForm').addEventListener('submit', (ev) => {
+    $('#categoryForm').addEventListener('submit', async (ev) => {
       ev.preventDefault();
+      if (!cloudReady || cloudBusy || cloudBlocked) return toast('Aguarde ou clique em Atualizar dados.');
       const name = $('#newCategory').value.trim();
       if (!name) return;
       if (state.expenseCategories.some(c => c.toLowerCase() === name.toLowerCase())) return feedback($('#categoryMsg'),'Essa categoria já existe.','error');
       state.expenseCategories.push(name);
       $('#newCategory').value='';
-      saveState(); feedback($('#categoryMsg'),'Categoria adicionada.','ok');
+      if (!await saveState()) return; feedback($('#categoryMsg'),'Categoria adicionada.','ok');
     });
   }
 
@@ -491,6 +622,36 @@
   }
 
   function setupEvents() {
+    document.addEventListener('input', ev => {
+      if (ev.target.closest('#productForm,#entryForm,#saleForm,#expenseForm,#categoryForm')) formDirty = true;
+    });
+    document.addEventListener('change', ev => {
+      if (ev.target.closest('#productForm,#entryForm,#saleForm,#expenseForm,#categoryForm')) formDirty = true;
+    });
+    $('#refreshCloud').addEventListener('click', () => updateCloud(true));
+    $('#downloadLegacy').addEventListener('click', () => downloadText('natugestao-dados-antigos.json', JSON.stringify(legacyState,null,2), 'application/json'));
+    $('#downloadPending').addEventListener('click', () => {
+      const raw = memoryPending ? JSON.stringify(memoryPending) : localStorage.getItem(pendingKey());
+      if (!raw) return toast('Não há tentativa pendente neste aparelho.');
+      downloadText('natugestao-tentativa-pendente.json', raw, 'application/json');
+    });
+    $('#migrateLegacy').addEventListener('click', async () => {
+      if (!cloudReady || cloudBusy || cloudBlocked) return toast('Atualize os dados antes de importar.');
+      try {
+        const incoming = validateBackup(legacyState);
+        if (!confirm('Adicionar os dados antigos deste aparelho à nuvem? Baixe antes uma cópia em “Baixar dados antigos”.')) return;
+        state = mergeBackup(state, incoming);
+        if (await saveState()) toast('Dados antigos importados e salvos na nuvem.');
+      } catch (err) { alert(err.message); }
+    });
+    setInterval(() => {
+      if (!document.hidden && !document.activeElement?.matches('input,textarea,select') && document.body.classList.contains('auth-ready')) updateCloud();
+    }, 15000);
+    document.addEventListener('submit', ev => {
+      if (ev.target.id !== 'loginForm' && (!cloudReady || cloudBusy || cloudBlocked)) {
+        ev.preventDefault(); ev.stopImmediatePropagation(); toast('Aguarde a sincronização ou clique em Atualizar dados.');
+      }
+    }, true);
     $$('.nav-item').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
     $$('[data-open]').forEach(b => b.addEventListener('click', () => setView(b.dataset.open)));
     $('#homeMonth').addEventListener('change', renderDashboard);
@@ -504,17 +665,18 @@
       updateSalePreview();
     });
 
-    document.addEventListener('click', (ev) => {
+    document.addEventListener('click', async (ev) => {
       const edit = ev.target.closest('[data-edit-product]');
       if (edit) return editProduct(edit.dataset.editProduct);
       const deact = ev.target.closest('[data-deactivate-product]');
       if (deact) return deactivateProduct(deact.dataset.deactivateProduct);
       const rm = ev.target.closest('[data-remove-category]');
       if (rm) {
+        if (!cloudReady || cloudBusy || cloudBlocked) return toast("Atualize os dados antes de continuar.");
         const name = rm.dataset.removeCategory;
         if (state.expenses.some(e => e.category === name)) return toast('Categoria já usada em despesas e não pode ser removida.');
         state.expenseCategories = state.expenseCategories.filter(c => c !== name);
-        saveState(); toast('Categoria removida.');
+        if (!await saveState()) return; toast('Categoria removida.');
       }
     });
 
@@ -551,13 +713,14 @@
     const file = ev.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const parsed = JSON.parse(reader.result);
-        const imported = normalizeState(parsed);
-        if (!confirm('Restaurar este backup? Os dados atuais serão substituídos.')) return;
-        state = imported; saveState(); toast('Backup restaurado.'); feedback($('#backupMsg'),'Backup restaurado com sucesso.','ok');
-      } catch { feedback($('#backupMsg'),'Arquivo de backup inválido.','error'); }
+        const imported = validateBackup(parsed);
+        if (!cloudReady || cloudBusy || cloudBlocked) throw new Error('Atualize os dados antes de importar.');
+        if (!confirm('Adicionar os registros deste backup à nuvem? Registros idênticos serão ignorados; divergências serão bloqueadas para conferência.')) return;
+        state = mergeBackup(state, imported); if (!await saveState()) return; toast('Backup restaurado.'); feedback($('#backupMsg'),'Backup restaurado com sucesso.','ok');
+      } catch (err) { feedback($('#backupMsg'),err.message || 'Arquivo de backup inválido.','error'); }
       ev.target.value='';
     };
     reader.readAsText(file);
@@ -588,8 +751,9 @@
     setupAuthEvents();
     setupPwa();
     const authenticated = await verifyAuthSession();
-    if (authenticated) showApp();
-    else showLogin();
+    if (authenticated) {
+      try { await showApp(); } catch (err) { showLogin(err.message); }
+    } else showLogin();
   }
 
   bootstrap();

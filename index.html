@@ -84,6 +84,10 @@
   </header>
 
   <main class="app-shell">
+    <div class="card" style="margin-bottom:12px;padding:12px" aria-live="polite">
+      <p id="syncStatus">Conectando à nuvem…</p>
+      <button id="refreshCloud" type="button" class="btn ghost">Atualizar dados</button>
+    </div>
     <section id="view-home" class="view active" aria-labelledby="tab-home">
       <div class="section-head">
         <div>
@@ -228,15 +232,21 @@
       <div class="section-head"><div><h2>Backup e segurança</h2><p class="muted">Nesta primeira versão, os dados ficam salvos no próprio smartphone.</p></div></div>
       <section class="panel warning-panel">
         <h3>Importante</h3>
-        <p>Se os dados do navegador forem apagados ou o celular for perdido, o histórico pode ser perdido. Faça um backup regularmente.</p>
+        <p>Os registros são salvos na nuvem da sua conta. Faça também cópias de segurança. Para cadastrar ou movimentar estoque é necessário ter conexão.</p>
       </section>
       <section class="panel">
         <h3>Backup completo</h3>
         <p class="muted">Gera um arquivo com produtos, estoque, entradas, vendas, despesas e categorias.</p>
         <div class="stack-actions">
           <button id="exportBackup" class="btn primary" type="button">Baixar backup</button>
-          <label class="file-btn btn ghost">Restaurar backup<input id="importBackup" type="file" accept="application/json,.json" /></label>
+          <label class="file-btn btn ghost">Importar backup<input id="importBackup" type="file" accept="application/json,.json" /></label>
         </div>
+        <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button id="downloadLegacy" class="btn ghost" type="button">Baixar dados antigos</button>
+          <button id="migrateLegacy" class="btn ghost" type="button">Importar dados deste aparelho</button>
+          <button id="downloadPending" class="btn ghost" type="button">Baixar tentativa pendente</button>
+        </div>
+        <p>Os dados antigos de cada aparelho são preservados. Importe primeiro o aparelho com a base mais completa. Produtos com mesmo nome ou registros com versões divergentes exigem conferência para evitar duplicação de estoque.</p>
         <p id="backupMsg" class="feedback" aria-live="polite"></p>
       </section>
       <section class="panel">
@@ -271,6 +281,7 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="cloud-store.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
